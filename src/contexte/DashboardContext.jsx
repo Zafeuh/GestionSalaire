@@ -1,5 +1,14 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
-import { getKPIs, getCharts, getEntreprises, getUsers, getEmployes, getPayRuns } from '../config/api.js';
+import React, { createContext, useContext, useReducer, useCallback } from 'react';
+import { 
+  getKPIs, 
+  getCharts, 
+  getEntreprises, 
+  getUsers, 
+  getEmployes, 
+  getPayRuns,
+  getPayslips,
+  getPaiements
+} from '../config/api.js';
 import { useAuth } from './useAuth';
 
 const DashboardContext = createContext();
@@ -7,14 +16,17 @@ const DashboardContext = createContext();
 const initialState = {
   kpis: null,
   charts: {
-    paymentsByMonth: null,
-    employeesByPoste: null,
-    paymentsByType: null,
+    salaryDistribution: [],
+    employeesByPoste: [],
+    paymentsByMonth: [],
+    paymentsByType: [],
   },
   entreprises: [],
   users: [],
   employes: [],
   payRuns: [],
+  payslips: [],
+  paiements: [],
   loading: false,
   error: null,
   modalOpen: false,
@@ -26,13 +38,13 @@ const initialState = {
 const dashboardReducer = (state, action) => {
   switch (action.type) {
     case 'SET_LOADING':
-      return { ...state, loading: action.payload };
+      return { ...state, loading: action.payload, error: null };
     case 'SET_ERROR':
-      return { ...state, error: action.payload };
+      return { ...state, error: action.payload, loading: false };
     case 'SET_KPIS':
       return { ...state, kpis: action.payload };
     case 'SET_CHARTS':
-      return { ...state, charts: action.payload };
+      return { ...state, charts: { ...state.charts, ...action.payload } };
     case 'SET_ENTREPRISES':
       return { ...state, entreprises: action.payload };
     case 'SET_USERS':
@@ -41,6 +53,10 @@ const dashboardReducer = (state, action) => {
       return { ...state, employes: action.payload };
     case 'SET_PAYRUNS':
       return { ...state, payRuns: action.payload };
+    case 'SET_PAYSLIPS':
+      return { ...state, payslips: action.payload };
+    case 'SET_PAIEMENTS':
+      return { ...state, paiements: action.payload };
     case 'OPEN_MODAL':
       return { 
         ...state, 
@@ -57,8 +73,8 @@ const dashboardReducer = (state, action) => {
         modalEntityType: null, 
         modalData: null 
       };
-    case 'REFRESH_DATA':
-      return { ...state, loading: true, error: null };
+    case 'CLEAR_ERROR':
+      return { ...state, error: null };
     default:
       return state;
   }
@@ -68,7 +84,10 @@ export const DashboardProvider = ({ children }) => {
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
   const { user, token } = useAuth();
 
-  // Mémoisation des fonctions pour éviter les re-créations inutiles
+  const clearError = useCallback(() => {
+    dispatch({ type: 'CLEAR_ERROR' });
+  }, []);
+
   const fetchKPIs = useCallback(async () => {
     if (!token) return;
     try {
@@ -81,10 +100,11 @@ export const DashboardProvider = ({ children }) => {
           employesActifs: 0,
           masseSalarialeTotale: 0,
           payRunsBrouillon: 0,
-          payRunsApprouves: 0,
-          payRunsClotures: 0,
+          payRunsApprouve: 0,
+          payRunsCloture: 0,
           paiementsEnAttente: 0,
-          paiementsPayes: 0
+          paiementsPartiel: 0,
+          paiementsPaye: 0
         }
       });
     } catch (error) {
@@ -106,17 +126,19 @@ export const DashboardProvider = ({ children }) => {
         ...(entrepriseId && { entrepriseId })
       };
 
-      const [paymentsByMonth, employeesByPoste, paymentsByType] = await Promise.all([
-        getCharts('payments-by-month', token, params),
+      const [salaryDistribution, employeesByPoste, paymentsByMonth, paymentsByType] = await Promise.all([
+        getCharts('salary-distribution', token, params),
         getCharts('employees-by-poste', token, params),
+        getCharts('payments-by-month', token, params),
         getCharts('payments-by-type', token, params)
       ]);
       
       dispatch({ 
         type: 'SET_CHARTS', 
         payload: {
-          paymentsByMonth: paymentsByMonth || [],
+          salaryDistribution: salaryDistribution || [],
           employeesByPoste: employeesByPoste || [],
+          paymentsByMonth: paymentsByMonth || [],
           paymentsByType: paymentsByType || []
         }
       });
@@ -130,8 +152,9 @@ export const DashboardProvider = ({ children }) => {
     if (!token) return;
     try {
       const data = await getEntreprises(token, params);
-      dispatch({ type: 'SET_ENTREPRISES', payload: data });
+      dispatch({ type: 'SET_ENTREPRISES', payload: Array.isArray(data) ? data : data.entreprises || [] });
     } catch (error) {
+      console.error('Erreur lors du chargement des entreprises:', error);
       dispatch({ type: 'SET_ERROR', payload: error.message });
     }
   }, [token]);
@@ -140,8 +163,9 @@ export const DashboardProvider = ({ children }) => {
     if (!token) return;
     try {
       const data = await getUsers(token, params);
-      dispatch({ type: 'SET_USERS', payload: data });
+      dispatch({ type: 'SET_USERS', payload: Array.isArray(data) ? data : data.users || [] });
     } catch (error) {
+      console.error('Erreur lors du chargement des utilisateurs:', error);
       dispatch({ type: 'SET_ERROR', payload: error.message });
     }
   }, [token]);
@@ -150,10 +174,14 @@ export const DashboardProvider = ({ children }) => {
     if (!token) return;
     try {
       const entrepriseId = user?.role !== 'SUPER_ADMIN' ? user.entrepriseId : null;
-      const queryParams = new URLSearchParams({ ...params, ...(entrepriseId && { entrepriseId }) }).toString();
+      const queryParams = new URLSearchParams({ 
+        ...Object.fromEntries(new URLSearchParams(params)), 
+        ...(entrepriseId && { entrepriseId }) 
+      }).toString();
       const data = await getEmployes(token, queryParams ? `?${queryParams}` : '');
-      dispatch({ type: 'SET_EMPLOYES', payload: data.employes || data });
+      dispatch({ type: 'SET_EMPLOYES', payload: Array.isArray(data) ? data : data.employes || [] });
     } catch (error) {
+      console.error('Erreur lors du chargement des employés:', error);
       dispatch({ type: 'SET_ERROR', payload: error.message });
     }
   }, [token, user]);
@@ -162,47 +190,82 @@ export const DashboardProvider = ({ children }) => {
     if (!token) return;
     try {
       const entrepriseId = user?.role !== 'SUPER_ADMIN' ? user.entrepriseId : null;
-      const queryParams = new URLSearchParams({ ...params, ...(entrepriseId && { entrepriseId }) }).toString();
+      const queryParams = new URLSearchParams({ 
+        ...Object.fromEntries(new URLSearchParams(params)), 
+        ...(entrepriseId && { entrepriseId }) 
+      }).toString();
       const data = await getPayRuns(token, queryParams ? `?${queryParams}` : '');
-      dispatch({ type: 'SET_PAYRUNS', payload: data.payRuns || data });
+      dispatch({ type: 'SET_PAYRUNS', payload: Array.isArray(data) ? data : data.payRuns || [] });
     } catch (error) {
+      console.error('Erreur lors du chargement des PayRuns:', error);
       dispatch({ type: 'SET_ERROR', payload: error.message });
     }
   }, [token, user]);
 
-  // Fonction de chargement des données avec gestion optimisée
+  const fetchPayslips = useCallback(async (params = '') => {
+    if (!token) return;
+    try {
+      const data = await getPayslips(token, params);
+      dispatch({ type: 'SET_PAYSLIPS', payload: Array.isArray(data) ? data : data.payslips || [] });
+    } catch (error) {
+      console.error('Erreur lors du chargement des bulletins:', error);
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+    }
+  }, [token]);
+
+  const fetchPaiements = useCallback(async (params = '') => {
+    if (!token) return;
+    try {
+      const data = await getPaiements(token, params);
+      dispatch({ type: 'SET_PAIEMENTS', payload: Array.isArray(data) ? data : data.paiements || [] });
+    } catch (error) {
+      console.error('Erreur lors du chargement des paiements:', error);
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+    }
+  }, [token]);
+
   const loadDashboardData = useCallback(async () => {
     if (!token) return;
     
-    dispatch({ type: 'REFRESH_DATA' });
+    dispatch({ type: 'SET_LOADING', payload: true });
     
     try {
-      // Utilisation de Promise.allSettled pour une meilleure gestion d'erreur
-      const results = await Promise.allSettled([
+      const promises = [
         fetchKPIs(),
         fetchCharts(),
-        fetchEntreprises(),
-        fetchUsers(),
-        fetchEmployes(),
-        fetchPayRuns(),
-      ]);
+      ];
 
-      // Log des erreurs potentielles
-      results.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          console.error(`Erreur lors du chargement de la donnée ${index}:`, result.reason);
-        }
-      });
+      // Ajouter les données spécifiques selon le rôle
+      if (user?.role === 'SUPER_ADMIN') {
+        promises.push(
+          fetchEntreprises(),
+          fetchUsers(),
+          fetchEmployes(),
+          fetchPayRuns(),
+          fetchPayslips(),
+          fetchPaiements()
+        );
+      } else if (user?.role === 'ADMIN') {
+        promises.push(
+          fetchEmployes(),
+          fetchPayRuns(),
+          fetchPayslips(),
+          fetchPaiements()
+        );
+      } else if (user?.role === 'CAISSIER') {
+        promises.push(
+          fetchPaiements()
+        );
+      }
 
+      await Promise.allSettled(promises);
       dispatch({ type: 'SET_LOADING', payload: false });
     } catch (error) {
       console.error('Erreur générale lors du chargement:', error);
       dispatch({ type: 'SET_ERROR', payload: 'Erreur lors du chargement des données' });
-      dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [token, user, fetchKPIs, fetchCharts, fetchEntreprises, fetchUsers, fetchEmployes, fetchPayRuns]);
+  }, [token, user, fetchKPIs, fetchCharts, fetchEntreprises, fetchUsers, fetchEmployes, fetchPayRuns, fetchPayslips, fetchPaiements]);
 
-  // Fonctions de modal mémorisées
   const openModal = useCallback((type, entityType, data = null) => {
     dispatch({ type: 'OPEN_MODAL', payload: { type, entityType, data } });
   }, []);
@@ -215,13 +278,6 @@ export const DashboardProvider = ({ children }) => {
     loadDashboardData();
   }, [loadDashboardData]);
 
-  // Effet avec dépendances correctes
-  useEffect(() => {
-    if (token) {
-      loadDashboardData();
-    }
-  }, [token, user, loadDashboardData]);
-
   const value = {
     ...state,
     fetchKPIs,
@@ -230,10 +286,13 @@ export const DashboardProvider = ({ children }) => {
     fetchUsers,
     fetchEmployes,
     fetchPayRuns,
+    fetchPayslips,
+    fetchPaiements,
     loadDashboardData,
     openModal,
     closeModal,
     refreshData,
+    clearError,
   };
 
   return (

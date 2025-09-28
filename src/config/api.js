@@ -1,4 +1,4 @@
-export const API_URL ="http://localhost:7000/api";
+export const API_URL = "http://localhost:7000";
 
 export const ENDPOINTS = {
   auth: {
@@ -22,12 +22,69 @@ export const ENDPOINTS = {
     update: '/users/:id',
     delete: '/users/:id',
   },
+  employes: {
+    list: '/employes',
+    get: '/employes/:id',
+    create: '/employes',
+    update: '/employes/:id',
+    delete: '/employes/:id',
+    activate: '/employes/:id/activer',
+    deactivate: '/employes/:id/desactiver',
+  },
+  payruns: {
+    list: '/payruns',
+    get: '/payruns/:id',
+    create: '/payruns',
+    update: '/payruns/:id',
+    delete: '/payruns/:id',
+    approve: '/payruns/:id/approve',
+    close: '/payruns/:id/close',
+  },
+  payslips: {
+    list: '/payslips',
+    get: '/payslips/:id',
+    create: '/payslips',
+    update: '/payslips/:id',
+    delete: '/payslips/:id',
+  },
+  paiements: {
+    list: '/paiements',
+    get: '/paiements/:id',
+    create: '/paiements',
+    update: '/paiements/:id',
+    delete: '/paiements/:id',
+    generatePdf: '/paiements/:id/generate-pdf',
+  },
 };
 
+// Fonction utilitaire pour les requêtes API
+const apiRequest = async (url, options = {}) => {
+  try {
+    const response = await fetch(`${API_URL}${url}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Erreur ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.data || data;
+  } catch (error) {
+    console.error('Erreur API:', error);
+    throw error;
+  }
+};
+
+// Authentification
 export const loginUser = async (email, password) => {
   try {
-    console.log('Envoi de la requête à:', `${API_URL}${ENDPOINTS.auth.login}`);
-    const response = await fetch(`${API_URL}${ENDPOINTS.auth.login}`, {
+    const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -36,19 +93,16 @@ export const loginUser = async (email, password) => {
     });
 
     const data = await response.json();
-    console.log('Réponse status:', response.status);
 
     if (!response.ok) {
-      console.error('Erreur de connexion:', data);
       throw new Error(data.message || `Erreur ${response.status}: ${response.statusText}`);
     }
 
     if (!data.data || (!data.data.accessToken && !data.data.refreshToken)) {
-      console.error('Réponse invalide du serveur:', data);
       throw new Error('Format de réponse invalide du serveur');
     }
 
-    return data.data; // { accessToken, refreshToken }
+    return data.data;
   } catch (error) {
     console.error('Erreur lors de la connexion:', error);
     throw error;
@@ -56,498 +110,362 @@ export const loginUser = async (email, password) => {
 };
 
 export const logoutUser = async (token) => {
-  const response = await fetch(`${API_URL}${ENDPOINTS.auth.logout}`, {
+  return apiRequest('/auth/logout', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur de déconnexion');
-  }
-
-  const data = await response.json();
-  return data;
 };
 
-// Dashboard functions
+// Dashboard
 export const getKPIs = async (token, entrepriseId = null) => {
-  let url = `${API_URL}/dashboard/kpis`;
-  if (entrepriseId) {
-    url += `?entrepriseId=${entrepriseId}`;
-  }
-  const response = await fetch(url, {
+  const params = entrepriseId ? `?entrepriseId=${entrepriseId}` : '';
+  return apiRequest(`/dashboard/kpis${params}`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors du chargement des KPIs');
-  }
-
-  const data = await response.json();
-  return data.data;
 };
 
 export const getCharts = async (type, token, params = {}) => {
   try {
     const query = new URLSearchParams(params).toString();
-    const url = `${API_URL}/dashboard/charts/${type}${query ? `?${query}` : ''}`;
-    const response = await fetch(url, {
+    const url = `/dashboard/charts/${type}${query ? `?${query}` : ''}`;
+    
+    const response = await fetch(`${API_URL}${url}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.message || 'Erreur lors du chargement des graphiques');
     }
 
     const rawData = await response.json();
-    console.log(`Données reçues pour ${type}:`, rawData);
+    const data = rawData.data || rawData;
 
-    // Données par défaut selon le type
-    const defaultData = {
-      'payments-by-month': [
-        { name: 'Jan', value: 0 },
-        { name: 'Fév', value: 0 },
-        { name: 'Mar', value: 0 },
-        { name: 'Avr', value: 0 },
-        { name: 'Mai', value: 0 },
-        { name: 'Jun', value: 0 }
-      ],
-      'employees-by-poste': [
-        { name: 'Aucune donnée', value: 0 }
-      ],
-      'payments-by-type': [
-        { name: 'Espèces', value: 0 },
-        { name: 'Virement', value: 0 },
-        { name: 'Mobile Money', value: 0 }
-      ]
-    };
-
-    // Si pas de données ou format invalide, retourner les données par défaut
-    if (!rawData || !rawData.data || typeof rawData.data !== 'object') {
-      console.warn(`Données invalides reçues pour ${type}, utilisation des données par défaut`);
-      return defaultData[type] || [];
-    }
-
-    // Formatage des données selon le type de graphique
-    try {
-      // Assume API returns {labels: [...], data: [...]} or {data: {key: value}}
-      if (rawData.labels && rawData.data) {
-        // Array format
-        return rawData.labels.map((label, i) => ({
+    // Formatage des données selon le type
+    if (data && typeof data === 'object') {
+      if (data.labels && data.data) {
+        // Format {labels: [...], data: [...]}
+        return data.labels.map((label, i) => ({
           name: label,
-          value: parseFloat(rawData.data[i]) || 0
+          value: parseFloat(data.data[i]) || 0
         }));
-      } else if (rawData.data && typeof rawData.data === 'object') {
-        // Object format
-        return Object.entries(rawData.data).map(([key, value]) => ({
+      } else if (typeof data === 'object' && !Array.isArray(data)) {
+        // Format {key: value}
+        return Object.entries(data).map(([key, value]) => ({
           name: key,
           value: parseFloat(value) || 0
         }));
+      } else if (Array.isArray(data)) {
+        // Format déjà correct
+        return data.map(item => ({
+          name: item.name || item.label || 'Inconnu',
+          value: parseFloat(item.value || item.count || 0)
+        }));
       }
-
-      // Si le type n'est pas reconnu, retourner les données brutes ou un tableau vide
-      return Array.isArray(rawData.data) ? rawData.data.map((item, i) => ({
-        name: item.name || `Item ${i}`,
-        value: parseFloat(item.value) || 0
-      })) : [];
-    } catch (error) {
-      console.error(`Erreur lors du formatage des données pour ${type}:`, error);
-      return defaultData[type] || [];
     }
+
+    // Données par défaut si format invalide
+    return [];
   } catch (error) {
-    console.error('Erreur lors de la récupération des données du graphique:', error);
-    throw error;
+    console.error(`Erreur lors de la récupération des données du graphique ${type}:`, error);
+    return [];
   }
 };
 
-// Entreprises functions
+// Entreprises
 export const getEntreprises = async (token, params = '') => {
-  const url = `${API_URL}/entreprises${params ? `?${params}` : ''}`;
-  const response = await fetch(url, {
+  return apiRequest(`/entreprises${params ? `?${params}` : ''}`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors du chargement des entreprises');
-  }
-
-  const data = await response.json();
-  return data.data;
 };
 
 export const createEntreprise = async (data, token) => {
   const formData = new FormData();
-  formData.append('nom', data.nom);
-  formData.append('devise', data.devise);
-  formData.append('adresse', data.adresse);
-  if (data.logo) formData.append('logo', data.logo);
-  formData.append('primaryColor', data.primaryColor);
-  formData.append('secondaryColor', data.secondaryColor);
-  formData.append('periodeType', data.periodeType);
-  formData.append('nombreAdmins', data.nombreAdmins);
-  formData.append('nombreCaissiers', data.nombreCaissiers);
+  Object.keys(data).forEach(key => {
+    if (data[key] !== null && data[key] !== undefined) {
+      formData.append(key, data[key]);
+    }
+  });
 
-  const response = await fetch(`${API_URL}/entreprises`, {
+  return apiRequest('/entreprises', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
     body: formData,
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la création de l\'entreprise');
-  }
-
-  const result = await response.json();
-  return result.data;
 };
 
 export const updateEntreprise = async (id, data, token) => {
   const formData = new FormData();
-  if (data.nom) formData.append('nom', data.nom);
-  if (data.devise) formData.append('devise', data.devise);
-  if (data.adresse) formData.append('adresse', data.adresse);
-  if (data.logo) formData.append('logo', data.logo);
-  if (data.primaryColor) formData.append('primaryColor', data.primaryColor);
-  if (data.secondaryColor) formData.append('secondaryColor', data.secondaryColor);
-  if (data.periodeType) formData.append('periodeType', data.periodeType);
-  if (data.nombreAdmins) formData.append('nombreAdmins', data.nombreAdmins);
-  if (data.nombreCaissiers) formData.append('nombreCaissiers', data.nombreCaissiers);
+  Object.keys(data).forEach(key => {
+    if (data[key] !== null && data[key] !== undefined) {
+      formData.append(key, data[key]);
+    }
+  });
 
-  const response = await fetch(`${API_URL}/entreprises/${id}`, {
+  return apiRequest(`/entreprises/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
     body: formData,
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la mise à jour de l\'entreprise');
-  }
-
-  const result = await response.json();
-  return result.data;
 };
 
 export const deleteEntreprise = async (id, token) => {
-  const response = await fetch(`${API_URL}/entreprises/${id}`, {
+  return apiRequest(`/entreprises/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la suppression de l\'entreprise');
-  }
-
-  const result = await response.json();
-  return result;
 };
 
-// Users functions
+// Users
 export const getUsers = async (token, params = '') => {
-  const url = `${API_URL}/users${params ? `?${params}` : ''}`;
-  const response = await fetch(url, {
+  return apiRequest(`/users${params ? `?${params}` : ''}`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors du chargement des utilisateurs');
-  }
-
-  const data = await response.json();
-  return data.data;
 };
 
 export const createUser = async (data, token) => {
-  const response = await fetch(`${API_URL}/users`, {
+  return apiRequest('/users', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
-    body: JSON.stringify({ email: data.email, password: data.password, role: data.role, entrepriseId: data.entrepriseId }),
+    body: JSON.stringify(data),
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la création de l\'utilisateur');
-  }
-
-  const result = await response.json();
-  return result.data;
 };
 
 export const updateUser = async (id, data, token) => {
-  const response = await fetch(`${API_URL}/users/${id}`, {
+  return apiRequest(`/users/${id}`, {
     method: 'PUT',
     headers: {
-      'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify(data),
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la mise à jour de l\'utilisateur');
-  }
-
-  const result = await response.json();
-  return result.data;
 };
 
 export const deleteUser = async (id, token) => {
-  const response = await fetch(`${API_URL}/users/${id}`, {
+  return apiRequest(`/users/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la suppression de l\'utilisateur');
-  }
-
-  const result = await response.json();
-  return result;
 };
 
-// Employés functions
+// Employés
 export const getEmployes = async (token, params = '') => {
-  const url = `${API_URL}/employes${params ? `?${params}` : ''}`;
-  const response = await fetch(url, {
+  return apiRequest(`/employes${params ? `?${params}` : ''}`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors du chargement des employés');
-  }
-
-  const data = await response.json();
-  return data.data;
 };
 
 export const createEmploye = async (data, token) => {
-  const response = await fetch(`${API_URL}/employes`, {
+  return apiRequest('/employes', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify(data),
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la création de l\'employé');
-  }
-
-  const result = await response.json();
-  return result.data;
 };
 
 export const updateEmploye = async (id, data, token) => {
-  const response = await fetch(`${API_URL}/employes/${id}`, {
+  return apiRequest(`/employes/${id}`, {
     method: 'PUT',
     headers: {
-      'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify(data),
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la mise à jour de l\'employé');
-  }
-
-  const result = await response.json();
-  return result.data;
 };
 
 export const deleteEmploye = async (id, token) => {
-  const response = await fetch(`${API_URL}/employes/${id}`, {
+  return apiRequest(`/employes/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la suppression de l\'employé');
-  }
-
-  const result = await response.json();
-  return result;
 };
 
 export const activerEmploye = async (id, token) => {
-  const response = await fetch(`${API_URL}/employes/${id}/activate`, {
+  return apiRequest(`/employes/${id}/activer`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de l\'activation de l\'employé');
-  }
-
-  const result = await response.json();
-  return result;
 };
 
 export const desactiverEmploye = async (id, token) => {
-  const response = await fetch(`${API_URL}/employes/${id}/deactivate`, {
+  return apiRequest(`/employes/${id}/desactiver`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la désactivation de l\'employé');
-  }
-
-  const result = await response.json();
-  return result;
 };
 
-// PayRuns functions
+// PayRuns
 export const getPayRuns = async (token, params = '') => {
-  const url = `${API_URL}/payruns${params ? `?${params}` : ''}`;
-  const response = await fetch(url, {
+  return apiRequest(`/payruns${params ? `?${params}` : ''}`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors du chargement des payruns');
-  }
-
-  const data = await response.json();
-  return data.data;
 };
 
-
-
 export const createPayRun = async (data, token) => {
-  const response = await fetch(`${API_URL}/payruns`, {
+  return apiRequest('/payruns', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify(data),
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la création du payrun');
-  }
-
-  const result = await response.json();
-  return result.data;
 };
 
 export const updatePayRun = async (id, data, token) => {
-  const response = await fetch(`${API_URL}/payruns/${id}`, {
+  return apiRequest(`/payruns/${id}`, {
     method: 'PUT',
     headers: {
-      'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify(data),
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la mise à jour du payrun');
-  }
-
-  const result = await response.json();
-  return result.data;
 };
 
 export const deletePayRun = async (id, token) => {
-  const response = await fetch(`${API_URL}/payruns/${id}`, {
+  return apiRequest(`/payruns/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la suppression du payrun');
-  }
-
-  const result = await response.json();
-  return result;
 };
 
 export const approvePayRun = async (id, token) => {
-  const response = await fetch(`${API_URL}/payruns/${id}/approve`, {
+  return apiRequest(`/payruns/${id}/approve`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de l\'approbation du payrun');
-  }
-
-  const result = await response.json();
-  return result;
 };
 
 export const closePayRun = async (id, token) => {
-  const response = await fetch(`${API_URL}/payruns/${id}/close`, {
+  return apiRequest(`/payruns/${id}/close`, {
     method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+};
+
+// Payslips
+export const getPayslips = async (token, params = '') => {
+  return apiRequest(`/payslips${params ? `?${params}` : ''}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+};
+
+export const createPayslip = async (data, token) => {
+  return apiRequest('/payslips', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+};
+
+export const updatePayslip = async (id, data, token) => {
+  return apiRequest(`/payslips/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+};
+
+export const deletePayslip = async (id, token) => {
+  return apiRequest(`/payslips/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+};
+
+// Paiements
+export const getPaiements = async (token, params = '') => {
+  return apiRequest(`/paiements${params ? `?${params}` : ''}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+};
+
+export const createPaiement = async (data, token) => {
+  return apiRequest('/paiements', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+};
+
+export const updatePaiement = async (id, data, token) => {
+  return apiRequest(`/paiements/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+};
+
+export const deletePaiement = async (id, token) => {
+  return apiRequest(`/paiements/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+};
+
+export const generatePaiementPdf = async (id, token) => {
+  const response = await fetch(`${API_URL}/paiements/${id}/generate-pdf`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Erreur lors de la clôture du payrun');
+    throw new Error('Erreur lors de la génération du PDF');
   }
 
-  const result = await response.json();
-  return result;
+  return response.blob();
 };

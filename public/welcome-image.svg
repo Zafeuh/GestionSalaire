@@ -1,0 +1,9 @@
+&lt;svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200" fill="none" stroke="#1DA1F2" stroke-width="2"&gt;
+  &lt;rect x="50" y="50" width="200" height="100" rx="5" fill="#F3F4F6" stroke="#6B7280"/&gt;
+  &lt;line x1="60" y1="140" x2="100" y2="80" stroke="#1DA1F2"/&gt;
+  &lt;line x1="100" y1="140" x2="140" y2="100" stroke="#1DA1F2"/&gt;
+  &lt;line x1="140" y1="140" x2="180" y2="60" stroke="#1DA1F2"/&gt;
+  &lt;line x1="180" y1="140" x2="220" y2="90" stroke="#1DA1F2"/&gt;
+  &lt;line x1="220" y1="140" x2="260" y2="120" stroke="#1DA1F2"/&gt;
+  &lt;text x="100" y="170" fill="#6B7280" font-size="12"&gt;Graphique Salaires&lt;/text&gt;
+&lt;/svg&gt;

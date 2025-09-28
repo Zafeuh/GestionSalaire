@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Loader2 } from 'lucide-react';
+import { Loader as Loader2 } from 'lucide-react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import KPICard from './KPICard';
@@ -14,7 +14,7 @@ import TablePaiements from './TablePaiements';
 import ModalCRUD from './ModalCRUD';
 import { useDashboard } from '../contexte/DashboardContext';
 import { useAuth } from '../contexte/useAuth';
-import { Users, DollarSign, TrendingUp, FileText, Clock, CheckCircle, AlertCircle, CreditCard, Building2, UserCheck } from 'lucide-react';
+import { Users, DollarSign, TrendingUp, FileText, Clock, CircleCheck as CheckCircle, CircleAlert as AlertCircle, CreditCard, Building2, UserCheck } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { createEntreprise, updateEntreprise, deleteEntreprise, createUser, updateUser, deleteUser, approvePayRun, closePayRun } from '../config/api.js';
 

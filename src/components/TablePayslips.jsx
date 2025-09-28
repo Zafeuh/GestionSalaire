@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Edit, Trash2, Eye, Download, Filter, Search } from 'lucide-react';
+import { CreditCard as Edit, Trash2, Eye, Download, ListFilter as Filter, Search } from 'lucide-react';
 import { useDashboard } from '../contexte/DashboardContext';
 import { useAuth } from '../contexte/useAuth';
 import { toast } from 'react-hot-toast';
